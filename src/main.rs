@@ -1,5 +1,7 @@
-#![feature(collections, os)]
+#![feature(collections, io, os, path)]
 #![allow(deprecated)]
+
+extern crate brainfuck;
 
 extern crate getopts;
 
@@ -24,5 +26,10 @@ fn main() {
     }
 
     let srcfile = matches.free[0].clone();
-    println!("{}", srcfile);
+    let mut interpreter = brainfuck::Interpreter::new(
+        std::old_io::File::open(&Path::new(srcfile)).read_to_end().unwrap(),
+        std::old_io::stdio::stdin(),
+        std::old_io::stdio::stdout()
+    );
+    interpreter.run();
 }
