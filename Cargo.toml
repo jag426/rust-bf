@@ -1,6 +1,6 @@
 [package]
 
-name = "rust-brainf*ck"
+name = "rust-bf"
 version = "0.0.1"
 authors = ["J. Aaron Gustafson <jag426@cornell.edu>"]
 
@@ -9,6 +9,9 @@ name = "brainfuck"
 path = "src/lib.rs"
 
 [[bin]]
-name = "brainfuck"
+name = "bfi"
 path = "src/main.rs"
+
+[dependencies]
+getopts = "*"
 
