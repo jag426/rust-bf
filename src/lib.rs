@@ -115,15 +115,9 @@ impl<R, W> Interpreter<R, W> where R: Reader, W: Writer {
                 }
                 self.pc += 1us;
             }
-            x => {
-                // invalid command
-                if (9u8 <= x && x <= 13u8) || x == 32u8 {
-                    // whitespace; ignore
-                    self.pc += 1us;
-                } else {
-                    println!("invalid command: {}", x);
-                    return false;
-                }
+            _ => {
+                // not a command; skip
+                self.pc += 1us;
             }
         }
 
