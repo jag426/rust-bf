@@ -5,25 +5,28 @@ use std::iter::FromIterator;
 use std::old_io::{Reader, Writer};
 use std::string::String;
 
+use Command::{Loop, Move, OffsetAdd, Output, Input};
+
 enum Command {
     Loop(Vec<Command>),
-    Shift(isize),
-    Add(i32),
+    Move(isize),
+    OffsetAdd(isize, i32),
     Output,
     Input,
 }
 
 peg! grammar(r#"
 use super::Command;
+use Command::{Loop, Move, OffsetAdd, Output, Input};
 #[pub]
 program -> Vec<Command>
     = command*
 command -> Command
-    = "[" c:command* "]" { Command::Loop(c) }
-    / s:shift { Command::Shift(s) }
-    / a:add { Command::Add(a) }
-    / "." { Command::Output }
-    / "," { Command::Input }
+    = "[" c:command* "]" { Loop(c) }
+    / s:shift { Move(s) }
+    / a:add { OffsetAdd(0is, a) }
+    / "." { Output }
+    / "," { Input }
 shift -> isize
     = ">" s:shift { s + 1is }
     / ">" { 1is }
@@ -60,14 +63,14 @@ impl<R, W> Interpreter<R, W> where R: Reader, W: Writer {
 
     fn execute(&mut self, command: &Command) {
         match command {
-            &Command::Loop(ref cs) => {
+            &Loop(ref cs) => {
                 while self.tape[self.pos] != 0u8 {
                     for c in cs.iter() {
                         self.execute(&c);
                     }
                 }
             }
-            &Command::Shift(s) => {
+            &Move(s) => {
                 let pos = self.pos as isize + s;
                 let pos = if pos < 0 { 0 } else { pos };
                 self.pos = pos as usize;
@@ -75,13 +78,15 @@ impl<R, W> Interpreter<R, W> where R: Reader, W: Writer {
                     self.tape.push(0u8);
                 }
             }
-            &Command::Add(a) => {
-                self.tape[self.pos] += a as u8;
+            &OffsetAdd(s, a) => {
+                let ipos = self.pos as isize + s;
+                let pos = if ipos < 0 { 0us } else { ipos as usize };
+                self.tape[pos] += a as u8;
             }
-            &Command::Output => {
+            &Output => {
                 self.output.write_u8(self.tape[self.pos]).unwrap();
             }
-            &Command::Input => {
+            &Input => {
                 self.tape[self.pos] = self.input.read_u8().unwrap();
             }
         }
