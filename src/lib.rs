@@ -1,11 +1,42 @@
-#![feature(io)]
+#![feature(core, io, plugin)]
+#![plugin(peg_syntax_ext)]
 
+use std::iter::FromIterator;
 use std::old_io::{Reader, Writer};
+use std::string::String;
+
+enum Command {
+    Loop(Vec<Command>),
+    Shift(isize),
+    Add(i32),
+    Output,
+    Input,
+}
+
+peg! grammar(r#"
+use super::Command;
+#[pub]
+program -> Vec<Command>
+    = command*
+command -> Command
+    = "[" c:command* "]" { Command::Loop(c) }
+    / s:shift { Command::Shift(s) }
+    / a:add { Command::Add(a) }
+    / "." { Command::Output }
+    / "," { Command::Input }
+shift -> isize
+    = ">" s:shift { s + 1is }
+    / ">" { 1is }
+    / "<" s:shift { s - 1is }
+    / "<" { -1is }
+add -> i32
+    = "+" a:add { a + 1i32 }
+    / "+" { 1i32 }
+    / "-" a:add { a - 1i32 }
+    / "-" { -1i32 }
+"#);
 
 pub struct Interpreter<R, W> where R: Reader, W: Writer {
-    // the program's source code and program counter
-    program: Vec<u8>,
-    pc: usize,
     // the source of input and destination of output for the program
     input: R,
     output: W,
@@ -15,12 +46,11 @@ pub struct Interpreter<R, W> where R: Reader, W: Writer {
 }
 
 impl<R, W> Interpreter<R, W> where R: Reader, W: Writer {
-    pub fn new(program: Vec<u8>, input: R, output: W) -> Self {
+    pub fn new(input: R, output: W) -> Self {
+
         let mut tape = Vec::with_capacity(100us);
         tape.push(0u8);
         Interpreter {
-            program: program,
-            pc: 0us,
             input: input,
             output: output,
             tape: tape,
@@ -28,94 +58,42 @@ impl<R, W> Interpreter<R, W> where R: Reader, W: Writer {
         }
     }
 
-    pub fn step(&mut self) -> bool {
-        if self.pc >= self.program.len() {
-            return false;
-        }
-
-        match self.program[self.pc] {
-            62u8 => {
-                // > 
-                self.pos += 1us;
-                if self.pos == self.tape.len() {
+    fn execute(&mut self, command: &Command) {
+        match command {
+            &Command::Loop(ref cs) => {
+                while self.tape[self.pos] != 0u8 {
+                    for c in cs.iter() {
+                        self.execute(&c);
+                    }
+                }
+            }
+            &Command::Shift(s) => {
+                let pos = self.pos as isize + s;
+                let pos = if pos < 0 { 0 } else { pos };
+                self.pos = pos as usize;
+                while self.tape.len() <= self.pos {
                     self.tape.push(0u8);
                 }
-                self.pc += 1us;
             }
-            60u8 => {
-                // <
-                // noop if the pointer is all the way to the left already
-                if self.pos != 0us {
-                    self.pos -= 1us;
-                }
-                self.pc += 1us;
+            &Command::Add(a) => {
+                self.tape[self.pos] += a as u8;
             }
-            43u8 => {
-                // +
-                self.tape[self.pos] += 1u8;
-                self.pc += 1us;
-            }
-            45u8 => {
-                // -
-                self.tape[self.pos] -= 1u8;
-                self.pc += 1us;
-            }
-            46u8 => {
-                // .
+            &Command::Output => {
                 self.output.write_u8(self.tape[self.pos]).unwrap();
-                self.pc += 1us;
             }
-            44u8 => {
-                // ,
+            &Command::Input => {
                 self.tape[self.pos] = self.input.read_u8().unwrap();
-                self.pc += 1us;
-            }
-            91u8 => {
-                // [
-                if self.tape[self.pos] == 0u8 {
-                    let mut open_brackets = 1us;
-                    while open_brackets > 0us {
-                        self.pc += 1us;
-                        if self.pc >= self.program.len() {
-                            return false;
-                        }
-                        match self.program[self.pc] {
-                            91u8 => { open_brackets += 1us; }
-                            93u8 => { open_brackets -= 1us; }
-                            _    => {                       }
-                        }
-                    }
-                }
-                self.pc += 1us;
-            }
-            93u8 => {
-                // ]
-                if self.tape[self.pos] != 0u8 {
-                    let mut open_brackets = 1us;
-                    while open_brackets > 0us {
-                        if self.pc == 0us {
-                            return false;
-                        }
-                        self.pc -= 1us;
-                        match self.program[self.pc] {
-                            93u8 => { open_brackets += 1us; }
-                            91u8 => { open_brackets -= 1us; }
-                            _    => {                       }
-                        }
-                    }
-                }
-                self.pc += 1us;
-            }
-            _ => {
-                // not a command; skip
-                self.pc += 1us;
             }
         }
-
-        true
     }
 
-    pub fn run(&mut self) {
-        while self.step() {}
+    pub fn interpret(&mut self, src: String) {
+        let filtered: String = FromIterator::from_iter(src.as_slice().chars()
+            .filter(|&c| c == '[' || c == ']' || c == '<' || c == '>' ||
+                         c == '-' || c == '+' || c == '.' || c == ','));
+        let program = grammar::program(filtered.as_slice()).unwrap();
+        for c in program.iter() {
+            self.execute(&c);
+        }
     }
 }

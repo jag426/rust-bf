@@ -2,8 +2,9 @@
 #![allow(deprecated)]
 
 extern crate brainfuck;
-
 extern crate getopts;
+
+use std::old_io::{File, stdio};
 
 fn main() {
     let args: Vec<String> = std::os::args();
@@ -26,10 +27,6 @@ fn main() {
     }
 
     let srcfile = matches.free[0].clone();
-    let mut interpreter = brainfuck::Interpreter::new(
-        std::old_io::File::open(&Path::new(srcfile)).read_to_end().unwrap(),
-        std::old_io::stdio::stdin(),
-        std::old_io::stdio::stdout()
-    );
-    interpreter.run();
+    let src = File::open(&Path::new(srcfile)).read_to_string().unwrap();
+    brainfuck::Interpreter::new(stdio::stdin(), stdio::stdout()).interpret(src);
 }
