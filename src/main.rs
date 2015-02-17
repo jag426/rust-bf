@@ -29,6 +29,7 @@ fn main() {
     let srcfile = matches.free[0].clone();
     let src = File::open(&Path::new(srcfile)).read_to_string().unwrap();
 
+    /*
     let ast = brainfuck::Ast::parse(src);
     println!("{}", ast);
 
@@ -37,4 +38,8 @@ fn main() {
 
     ir.reorder_adds();
     println!("{}", ir);
+    */
+
+    brainfuck::Interpreter::interpret(src, stdio::stdin(), stdio::stdout());
 }
+

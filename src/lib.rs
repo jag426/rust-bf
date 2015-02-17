@@ -146,7 +146,7 @@ pub mod ir {
     }
 
     #[derive(Debug)]
-    pub struct Move(isize);
+    pub struct Move(pub isize);
 
     impl Move {
         pub fn pretty_indent(&self, indent: &String) -> String {
@@ -191,7 +191,7 @@ pub mod ir {
 
     #[derive(Debug)]
     pub struct Ir {
-        commands: Vec<LoopOrSeq>,
+        pub commands: Vec<LoopOrSeq>,
     }
 
     impl Ir {
@@ -295,7 +295,6 @@ pub mod ir {
     }
 }
 
-/*
 pub struct Interpreter<R, W> where R: Reader, W: Writer {
     // the source of input and destination of output for the program
     input: R,
@@ -307,7 +306,6 @@ pub struct Interpreter<R, W> where R: Reader, W: Writer {
 
 impl<R, W> Interpreter<R, W> where R: Reader, W: Writer {
     pub fn new(input: R, output: W) -> Self {
-
         let mut tape = Vec::with_capacity(100us);
         tape.push(0u8);
         Interpreter {
@@ -318,5 +316,58 @@ impl<R, W> Interpreter<R, W> where R: Reader, W: Writer {
         }
     }
 
+    pub fn interpret(src: String, input: R, output: W) {
+        let ast = Ast::parse(src);
+        let mut ir = Ir::from_ast(ast);
+        ir.reorder_adds();
+        Interpreter::new(input, output).execute(ir);
+    }
+
+    fn offset_pos(&mut self, offset: isize) -> usize {
+        let ret = if offset >= 0is { self.pos + (  offset  as usize) }
+                  else             { self.pos - ((-offset) as usize) };
+        while self.tape.len() <= ret {
+            self.tape.push(0u8);
+        }
+        ret
+    }
+
+    fn step(&mut self, c: &ir::LoopOrSeq) {
+
+        match c {
+            &ir::Loop(ref v) => {
+                while self.tape[self.pos] != 0u8 {
+                    for c in v.iter() {
+                        self.step(c);
+                    }
+                }
+            }
+            &ir::Seq(ref v, ir::Move(s)) => {
+                for c in v.iter() {
+                    match c {
+                        &ir::Offset::Add(o, a) => {
+                            let offset = self.offset_pos(o);
+                            self.tape[offset] += a as u8;
+                        }
+                        &ir::Offset::Output(o) => {
+                            let offset = self.offset_pos(o);
+                            self.output.write_u8(self.tape[offset]).unwrap();
+                        }
+                        &ir::Offset::Input(o) => {
+                            let offset = self.offset_pos(o);
+                            self.tape[offset] = self.input.read_u8().unwrap();
+                        }
+                    }
+                }
+                self.pos = self.offset_pos(s);
+            }
+        }
+    }
+
+    pub fn execute(&mut self, ir: Ir) {
+        for c in ir.commands.iter() {
+            self.step(c);
+        }
+    }
 }
-*/
+
