@@ -28,5 +28,10 @@ fn main() {
 
     let srcfile = matches.free[0].clone();
     let src = File::open(&Path::new(srcfile)).read_to_string().unwrap();
-    brainfuck::Interpreter::new(stdio::stdin(), stdio::stdout()).interpret(src);
+
+    let ast = brainfuck::Ast::parse(src);
+    println!("{}", ast);
+
+    let ir = brainfuck::Ir::from_ast(ast);
+    println!("{}", ir);
 }
