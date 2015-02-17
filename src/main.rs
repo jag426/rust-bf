@@ -32,6 +32,9 @@ fn main() {
     let ast = brainfuck::Ast::parse(src);
     println!("{}", ast);
 
-    let ir = brainfuck::Ir::from_ast(ast);
+    let mut ir = brainfuck::Ir::from_ast(ast);
+    println!("{}", ir);
+
+    ir.reorder_adds();
     println!("{}", ir);
 }

@@ -234,6 +234,51 @@ pub mod ir {
             }
         }
 
+        pub fn reorder_adds(&mut self) {
+            fn reorder_offsets(seq: &mut Vec<Offset>) {
+                let mut i = 0us;
+                while i < seq.len() {
+                    match seq[i] {
+                        Offset::Add(oi, mut ai) => {
+                            let mut j = i + 1us;
+                            while j < seq.len() {
+                                match seq[j] {
+                                    Offset::Add(oj, aj) if oi == oj => {
+                                        ai += aj;
+                                        seq.remove(j);
+                                    }
+                                    Offset::Add(_, _) => {
+                                        j += 1us;
+                                    }
+                                    _ => {
+                                        break;
+                                    }
+                                }
+                            }
+                            seq[i] = Offset::Add(oi, ai);
+                        }
+                        _ => {}
+                    }
+                    i += 1us;
+                }
+            }
+
+            fn reorder_loss(loss: &mut Vec<LoopOrSeq>) {
+                for los in loss.iter_mut() {
+                    match los {
+                        &mut Loop(ref mut v) => {
+                            reorder_loss(v);
+                        }
+                        &mut Seq(ref mut v, _) => {
+                            reorder_offsets(v);
+                        }
+                    }
+                }
+            }
+
+            reorder_loss(&mut self.commands);
+        }
+
         fn pretty(&self) -> String {
             let mut ret = String::new();
             for los in self.commands.iter() {
