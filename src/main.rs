@@ -29,6 +29,6 @@ fn main() {
     let srcfile = matches.free[0].clone();
     let src = File::open(&Path::new(srcfile)).read_to_string().unwrap();
 
-    brainfuck::Interpreter::interpret(src, stdio::stdin(), stdio::stdout());
+    brainfuck::interpret(src, &mut stdio::stdin(), &mut stdio::stdout());
 }
 

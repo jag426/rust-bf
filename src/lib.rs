@@ -64,10 +64,8 @@ pub mod ir {
         Move(isize),
         // (o, a) => p[o] += a
         AddConst(isize, i32),
-        // (o, m, a) => p[o] += m*a
+        // (o, m, a) => p[o] += p[m]*a
         AddMult(isize, isize, i32),
-        // (o, m) => p[o] += p[m]
-        AddOffset(isize, isize),
         // (o) => p[o] = 0
         Zero(isize),
         // (o) => putchar(p[o])
@@ -97,45 +95,70 @@ pub mod ir {
             let &ast::Program(ref ns) = a;
             Program(ns.iter().map(|n| Node::from_ast_node(n)).collect())
         }
+
+        pub fn execute<R: Reader, W: Writer>(&self, input: &mut R, output: &mut W) {
+            use self::Node::{Loop, Move, AddConst, AddMult, Zero, Output, Input};
+            let &Program(ref ns) = self;
+            let mut tape = vec![0u8];
+            let mut pos = 0us;
+
+            fn offset(tape: &mut Vec<u8>, pos: &mut usize, offset: isize) -> usize {
+                let ret = *pos as isize + offset;
+                if ret < 0is {
+                    panic!("Tried to move pointer to the left of cell 0");
+                }
+                let ret = ret as usize;
+                while tape.len() <= ret {
+                    tape.push(0u8);
+                }
+                ret
+            }
+
+            fn step<R: Reader, W: Writer>(n: &Node,
+                                          tape: &mut Vec<u8>,
+                                          pos: &mut usize,
+                                          input: &mut R,
+                                          output: &mut W) -> () {
+                match n {
+                    &Loop(ref ns) => {
+                        offset(tape, pos, 0is);
+                        while tape[*pos] != 0u8 {
+                            ns.iter().fold((), |_, ref n| step(&n, tape, pos, input, output));
+                        }
+                    }
+                    &Move(o) => *pos = offset(tape, pos, o),
+                    &AddConst(o, a) => {
+                        let o = offset(tape, pos, o);
+                        tape[o] += a as u8
+                    }
+                    &AddMult(o, m, a) => {
+                        let o = offset(tape, pos, o);
+                        let m = offset(tape, pos, m);
+                        tape[o] += tape[m] * a as u8
+                    }
+                    &Zero(o) => {
+                        let o = offset(tape, pos, o);
+                        tape[o] = 0u8
+                    }
+                    &Output(o) => {
+                        let o = offset(tape, pos, o);
+                        output.write_u8(tape[o]).unwrap()
+                    }
+                    &Input(o) => {
+                        let o = offset(tape, pos, o);
+                        tape[o] = input.read_u8().unwrap()
+                    }
+                }
+            }
+
+            ns.iter().fold((), |_, ref n| step(&n, &mut tape, &mut pos, input, output));
+        }
     }
 }
 
-pub struct Interpreter<R, W> where R: Reader, W: Writer {
-    // the source of input and destination of output for the program
-    input: R,
-    output: W,
-    // the array of byte cells
-    tape: Vec<u8>,
-    pos: usize,
-}
-
-impl<R, W> Interpreter<R, W> where R: Reader, W: Writer {
-    pub fn new(input: R, output: W) -> Self {
-        let mut tape = Vec::with_capacity(100us);
-        tape.push(0u8);
-        Interpreter {
-            input: input,
-            output: output,
-            tape: tape,
-            pos: 0us,
-        }
-    }
-
-    pub fn interpret(src: String, input: R, output: W) {
-        // TODO
-    }
-
-    fn offset_pos(&mut self, offset: isize) -> usize {
-        let ret = if offset >= 0is { self.pos + (  offset  as usize) }
-                  else             { self.pos - ((-offset) as usize) };
-        while self.tape.len() <= ret {
-            self.tape.push(0u8);
-        }
-        ret
-    }
-
-    pub fn execute(&mut self, p: ir::Program) {
-        // TODO
-    }
+pub fn interpret<R: Reader, W: Writer>(src: String, input: &mut R, output: &mut W) {
+    let ast = ast::parse(src);
+    let ir = ir::Program::from_ast(&ast);
+    ir.execute(input, output);
 }
 
