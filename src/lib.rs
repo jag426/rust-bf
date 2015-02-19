@@ -2,7 +2,6 @@
 #![plugin(peg_syntax_ext)]
 
 pub use ast::Ast;
-pub use ir::Ir;
 
 // AST. For parsing.
 pub mod ast {
@@ -107,190 +106,50 @@ pub mod ast {
     "#);
 }
 
-// IR. For optimizations.
 pub mod ir {
-    use std::fmt;
     use super::ast;
 
-    pub use self::LoopOrSeq::{Loop, Seq};
-    #[derive(Debug)]
-    pub enum LoopOrSeq {
-        Loop(Vec<LoopOrSeq>),
-        Seq(Vec<Offset>, Move),
+    #[derive(Clone, Debug)]
+    pub enum Node {
+        // while (p[0]) { <contents> }
+        Loop(Vec<Node>),
+        // (o) => p += o
+        Move(isize),
+        // (o, a) => p[o] += a
+        AddConst(isize, i32),
+        // (o, m, a) => p[o] += m*a
+        AddMult(isize, isize, i32),
+        // (o, m) => p[o] += p[m]
+        AddOffset(isize, isize),
+        // (o) => p[o] = 0
+        Zero(isize),
+        // (o) => putchar(p[o])
+        Output(isize),
+        // (o) => p[o] = getchar()
+        Input(isize),
     }
 
-    impl LoopOrSeq {
-        pub fn pretty_indent(&self, indent: &String) -> String {
-            let mut ret = String::new();
-            match self {
-                &Loop(ref loss) => {
-                    ret.push_str(indent.as_slice());
-                    ret.push_str("while(p[0]) {\n");
-                    let mut new_indent = indent.clone();
-                    new_indent.push_str("  ");
-                    for los in loss.iter() {
-                        ret.push_str(los.pretty_indent(&new_indent).as_slice());
-                    }
-                    ret.push_str(indent.as_slice());
-                    ret.push_str("}\n");
-                }
-                &Seq(ref os, ref m) => {
-                    for o in os.iter() {
-                        ret.push_str(o.pretty_indent(indent).as_slice());
-                    }
-                    ret.push_str(m.pretty_indent(indent).as_slice());
-                }
+    impl Node {
+        pub fn from_ast_command(c: &ast::Command) -> Self {
+            use ast::Command::{Loop, Move, Add, Output, Input};
+            match c {
+                &Loop(ref cs) => Node::Loop(
+                    cs.iter().map(|c| Node::from_ast_command(c)).collect()),
+                &Move(o) => Node::Move(o),
+                &Add(a) => Node::AddConst(0is, a),
+                &Output => Node::Output(0is),
+                &Input => Node::Input(0is),
             }
-            ret
-        }
-    }
-
-    #[derive(Debug)]
-    pub struct Move(pub isize);
-
-    impl Move {
-        pub fn pretty_indent(&self, indent: &String) -> String {
-            let &Move(s) = self;
-            let mut ret = String::new();
-            if s == 0is {
-                return ret;
-            }
-            ret.push_str(indent.as_slice());
-            ret.push_str(format!("p += {}\n", s).as_slice());
-            ret
         }
     }
 
     #[derive(Clone, Debug)]
-    pub enum Offset {
-        Add(isize, i32),
-        Output(isize),
-        Input(isize),
-    }
+    pub struct Program(Vec<Node>);
 
-    impl Offset {
-        pub fn pretty_indent(&self, indent: &String) -> String {
-            use self::Offset::{Add, Output, Input};
-
-            let mut ret = String::new();
-            ret.push_str(indent.as_slice());
-            match self {
-                &Add(o, a) => {
-                    ret.push_str(format!("p[{}] += {}\n", o, a).as_slice());
-                }
-                &Output(o) => {
-                    ret.push_str(format!("putchar(p[{}])\n", o).as_slice());
-                }
-                &Input(o) => {
-                    ret.push_str(format!("p[{}] = getchar()\n", o).as_slice());
-                }
-            }
-            ret
-        }
-    }
-
-    #[derive(Debug)]
-    pub struct Ir {
-        pub commands: Vec<LoopOrSeq>,
-    }
-
-    impl Ir {
-        fn ir_seq_from_ast_seq(aseq: &Vec<ast::Command>) -> Vec<LoopOrSeq> {
-            let mut commands = Vec::new();
-            let mut simpleseq = Vec::new();
-            let mut offset = 0is;
-            for n in aseq.iter() {
-                match n {
-                    &ast::Command::Loop(ref aloop) => {
-                        commands.push(Seq(simpleseq, Move(offset)));
-                        simpleseq = Vec::new();
-                        offset = 0is;
-                        commands.push(Loop(Ir::ir_seq_from_ast_seq(aloop)));
-                    }
-                    &ast::Command::Move(s) => {
-                        offset += s;
-                    }
-                    &ast::Command::Add(a) => {
-                        simpleseq.push(Offset::Add(offset, a));
-                    }
-                    &ast::Command::Output => {
-                        simpleseq.push(Offset::Output(offset));
-                    }
-                    &ast::Command::Input => {
-                        simpleseq.push(Offset::Input(offset));
-                    }
-                }
-            }
-            if simpleseq.len() > 0us || offset != 0is {
-                commands.push(Seq(simpleseq, Move(offset)));
-            }
-            commands
-        }
-
-        pub fn from_ast(ast: ast::Ast) -> Self {
-            let ast::Ast(commands) = ast;
-            Ir {
-                commands: Ir::ir_seq_from_ast_seq(&commands),
-            }
-        }
-
-        pub fn reorder_adds(&mut self) {
-            fn reorder_offsets(seq: &mut Vec<Offset>) {
-                let mut i = 0us;
-                while i < seq.len() {
-                    match seq[i] {
-                        Offset::Add(oi, mut ai) => {
-                            let mut j = i + 1us;
-                            while j < seq.len() {
-                                match seq[j] {
-                                    Offset::Add(oj, aj) if oi == oj => {
-                                        ai += aj;
-                                        seq.remove(j);
-                                    }
-                                    Offset::Add(_, _) => {
-                                        j += 1us;
-                                    }
-                                    _ => {
-                                        break;
-                                    }
-                                }
-                            }
-                            seq[i] = Offset::Add(oi, ai);
-                        }
-                        _ => {}
-                    }
-                    i += 1us;
-                }
-            }
-
-            fn reorder_loss(loss: &mut Vec<LoopOrSeq>) {
-                for los in loss.iter_mut() {
-                    match los {
-                        &mut Loop(ref mut v) => {
-                            reorder_loss(v);
-                        }
-                        &mut Seq(ref mut v, _) => {
-                            reorder_offsets(v);
-                        }
-                    }
-                }
-            }
-
-            reorder_loss(&mut self.commands);
-        }
-
-        fn pretty(&self) -> String {
-            let mut ret = String::new();
-            for los in self.commands.iter() {
-                ret.push_str(los.pretty_indent(&"".to_string()).as_slice());
-            }
-            ret
-        }
-    }
-
-    impl fmt::Display for Ir {
-        fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-            write!(f, "{}", self.pretty())
+    impl Program {
+        pub fn from_ast(a: &ast::Ast) -> Self {
+            let &ast::Ast(ref cs) = a;
+            Program(cs.iter().map(|c| Node::from_ast_command(c)).collect())
         }
     }
 }
@@ -317,10 +176,7 @@ impl<R, W> Interpreter<R, W> where R: Reader, W: Writer {
     }
 
     pub fn interpret(src: String, input: R, output: W) {
-        let ast = Ast::parse(src);
-        let mut ir = Ir::from_ast(ast);
-        ir.reorder_adds();
-        Interpreter::new(input, output).execute(ir);
+        // TODO
     }
 
     fn offset_pos(&mut self, offset: isize) -> usize {
@@ -332,42 +188,8 @@ impl<R, W> Interpreter<R, W> where R: Reader, W: Writer {
         ret
     }
 
-    fn step(&mut self, c: &ir::LoopOrSeq) {
-
-        match c {
-            &ir::Loop(ref v) => {
-                while self.tape[self.pos] != 0u8 {
-                    for c in v.iter() {
-                        self.step(c);
-                    }
-                }
-            }
-            &ir::Seq(ref v, ir::Move(s)) => {
-                for c in v.iter() {
-                    match c {
-                        &ir::Offset::Add(o, a) => {
-                            let offset = self.offset_pos(o);
-                            self.tape[offset] += a as u8;
-                        }
-                        &ir::Offset::Output(o) => {
-                            let offset = self.offset_pos(o);
-                            self.output.write_u8(self.tape[offset]).unwrap();
-                        }
-                        &ir::Offset::Input(o) => {
-                            let offset = self.offset_pos(o);
-                            self.tape[offset] = self.input.read_u8().unwrap();
-                        }
-                    }
-                }
-                self.pos = self.offset_pos(s);
-            }
-        }
-    }
-
-    pub fn execute(&mut self, ir: Ir) {
-        for c in ir.commands.iter() {
-            self.step(c);
-        }
+    pub fn execute(&mut self, p: ir::Program) {
+        // TODO
     }
 }
 
