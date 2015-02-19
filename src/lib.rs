@@ -1,98 +1,45 @@
 #![feature(core, io, plugin)]
 #![plugin(peg_syntax_ext)]
 
-pub use ast::Ast;
-
 // AST. For parsing.
 pub mod ast {
-    use std::fmt;
     use std::iter::FromIterator;
 
-    use self::Command::{Loop, Move, Add, Output, Input};
-    pub enum Command {
-        Loop(Vec<Command>),
+    #[derive(Clone, Debug)]
+    pub enum Node {
+        Loop(Vec<Node>),
         Move(isize),
         Add(i32),
         Output,
         Input,
     }
 
-    impl Command {
-        pub fn pretty_indent(&self, indent: &String) -> String {
-            let mut ret = String::new();
-            match self {
-                &Loop(ref cs) => {
-                    ret.push_str(indent.as_slice());
-                    ret.push_str("[\n");
-                    let mut new_indent = indent.clone();
-                    new_indent.push_str("  ");
-                    for c in cs.iter() {
-                        ret.push_str(c.pretty_indent(&new_indent).as_slice());
-                    }
-                    ret.push_str(indent.as_slice());
-                    ret.push_str("]\n");
-                }
-                &Move(s) => {
-                    ret.push_str(indent.as_slice());
-                    ret.push_str(format!("m({})\n", s).as_slice());
-                }
-                &Add(a) => {
-                    ret.push_str(indent.as_slice());
-                    ret.push_str(format!("a({})\n", a).as_slice());
-                }
-                &Output => {
-                    ret.push_str(indent.as_slice());
-                    ret.push_str(".\n");
-                }
-                &Input => {
-                    ret.push_str(indent.as_slice());
-                    ret.push_str(",\n");
-                }
-            }
-            ret
-        }
-    }
+    #[derive(Clone, Debug)]
+    pub struct Program(pub Vec<Node>);
 
-    pub struct Ast(pub Vec<Command>);
-
-    impl Ast {
-        pub fn parse(src: String) -> Self {
-            Ast::from_source(FromIterator::from_iter(src.as_slice().chars()
-                .filter(|&c| c == '[' || c == ']' || c == '<' || c == '>' ||
-                             c == '-' || c == '+' || c == '.' || c == ',')))
-        }
-
-        pub fn from_source(src: String) -> Self {
+    impl Program {
+        pub fn from_source_string(src: String) -> Self {
             grammar::program(src.as_slice()).unwrap()
         }
-
-        pub fn pretty(&self) -> String {
-            let &Ast(ref cs) = self;
-            let mut ret = String::new();
-            for c in cs.iter() {
-                ret.push_str(c.pretty_indent(&"".to_string()).as_slice());
-            }
-            ret
-        }
     }
 
-    impl fmt::Display for Ast {
-        fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-            write!(f, "{}", self.pretty())
-        }
+    pub fn parse(src: String) -> Program {
+        Program::from_source_string(FromIterator::from_iter(src.as_slice().chars()
+            .filter(|&c| c == '[' || c == ']' || c == '<' || c == '>' ||
+                         c == '-' || c == '+' || c == '.' || c == ',')))
     }
 
     peg! grammar(r#"
-    use super::{Ast, Command};
+    use super::{Node, Program};
     #[pub]
-    program -> Ast
-        = cs:command* { Ast(cs) }
-    command -> Command
-        = "[" cs:command* "]" { Command::Loop(cs) }
-        / s:shift { Command::Move(s) }
-        / a:add { Command::Add(a) }
-        / "." { Command::Output }
-        / "," { Command::Input }
+    program -> Program
+        = ns:node* { Program(ns) }
+    node -> Node
+        = "[" ns:node* "]" { Node::Loop(ns) }
+        / s:shift { Node::Move(s) }
+        / a:add { Node::Add(a) }
+        / "." { Node::Output }
+        / "," { Node::Input }
     shift -> isize
         = ">" s:shift { s + 1is }
         / ">" { 1is }
@@ -130,26 +77,25 @@ pub mod ir {
     }
 
     impl Node {
-        pub fn from_ast_command(c: &ast::Command) -> Self {
-            use ast::Command::{Loop, Move, Add, Output, Input};
+        pub fn from_ast_node(c: &ast::Node) -> Self {
             match c {
-                &Loop(ref cs) => Node::Loop(
-                    cs.iter().map(|c| Node::from_ast_command(c)).collect()),
-                &Move(o) => Node::Move(o),
-                &Add(a) => Node::AddConst(0is, a),
-                &Output => Node::Output(0is),
-                &Input => Node::Input(0is),
+                &ast::Node::Move(o)      => Node::Move(o),
+                &ast::Node::Add(a)       => Node::AddConst(0is, a),
+                &ast::Node::Output       => Node::Output(0is),
+                &ast::Node::Input        => Node::Input(0is),
+                &ast::Node::Loop(ref ns) => Node::Loop(
+                    ns.iter().map(|n| Node::from_ast_node(n)).collect()),
             }
         }
     }
 
     #[derive(Clone, Debug)]
-    pub struct Program(Vec<Node>);
+    pub struct Program(pub Vec<Node>);
 
     impl Program {
-        pub fn from_ast(a: &ast::Ast) -> Self {
-            let &ast::Ast(ref cs) = a;
-            Program(cs.iter().map(|c| Node::from_ast_command(c)).collect())
+        pub fn from_ast(a: &ast::Program) -> Self {
+            let &ast::Program(ref ns) = a;
+            Program(ns.iter().map(|n| Node::from_ast_node(n)).collect())
         }
     }
 }
