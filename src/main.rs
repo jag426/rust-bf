@@ -1,4 +1,4 @@
-#![feature(collections, io, os, path)]
+#![feature(collections, int_uint, old_io, old_path, os)]
 #![allow(deprecated)]
 
 extern crate brainfuck;

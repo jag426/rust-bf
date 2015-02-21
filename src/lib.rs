@@ -1,4 +1,4 @@
-#![feature(core, io, plugin)]
+#![feature(core, int_uint, old_io, plugin)]
 #![plugin(peg_syntax_ext)]
 
 pub mod ast;
