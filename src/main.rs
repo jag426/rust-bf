@@ -1,3 +1,4 @@
+#![cfg(not(test))]
 #![feature(collections, int_uint, old_io, old_path, os)]
 #![allow(deprecated)]
 

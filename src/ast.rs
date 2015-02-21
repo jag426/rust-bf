@@ -47,3 +47,19 @@ add -> i32
     / "-" { -1i32 }
 "#);
 
+#[cfg(test)]
+mod test {
+    use super::parse;
+
+    #[test]
+    fn test_parser() {
+        use std::old_io::File;
+        
+        let src = File::open(&Path::new("test/hello.bf")).read_to_string().unwrap();
+        let ast = parse(src);
+        let aststring = format!("{:?}", ast);
+        let expected = "Program([Loop([Input, Loop([Output]), Input, Output, Output, Input, Input, Input, Add(1), Input, Add(-1), Input, Move(0), Input, Loop([]), Output]), Add(8), Loop([Move(1), Add(4), Loop([Move(1), Add(2), Move(1), Add(3), Move(1), Add(3), Move(1), Add(1), Move(-4), Add(-1)]), Move(1), Add(1), Move(1), Add(1), Move(1), Add(-1), Move(2), Add(1), Loop([Move(-1)]), Move(-1), Add(-1)]), Move(2), Output, Move(1), Add(-3), Output, Add(7), Output, Output, Add(3), Output, Move(2), Output, Move(-1), Add(-1), Output, Move(-1), Output, Add(3), Output, Add(-6), Output, Add(-8), Output, Move(2), Add(1), Output, Move(1), Add(2), Output])";
+        assert!(aststring == expected);
+    }
+}
+
