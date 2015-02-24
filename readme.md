@@ -1,3 +1,4 @@
+![](https://travis-ci.org/jag426/rust-bf.svg?branch=master)
 # rust-bf
 Brainf&$# interpreter in Rust. Uses rust-peg for parsing.
 
