@@ -75,15 +75,55 @@ impl Node {
             _ => false
         }
     }
+
+    pub fn convert_multiply_loop(&self) -> Node {
+        use self::Node::{Loop, Move, AddConst, AddMult, Zero};
+        match self {
+            &Loop(ref ns) if self.is_multiply_loop() => {
+                let mut ret = Vec::new();
+                let mut offset = 0is;
+                for n in ns.iter() {
+                    match n {
+                        &Move(m) => {
+                            ret.push(Move(m));
+                            offset += m;
+                        }
+                        &AddConst(o, a) => {
+                            if offset + o != 0is {
+                                ret.push(AddMult(o, -offset, a));
+                            }
+                        }
+                        _ => {
+                            panic!("This is supposed to be a simple loop.");
+                        }
+                    }
+                }
+                assert!(offset == 0is);
+                ret.push(Zero(0is));
+                Loop(ret)
+            }
+            &Loop(ref ns) => Loop(ns.iter().map(|n| n.convert_multiply_loop()).collect()),
+            _ => self.clone(),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
 pub struct Program(pub Vec<Node>);
 
 impl Program {
-    pub fn from_ast(a: &ast::Program) -> Self {
+    pub fn from_ast(a: &ast::Program, opt: bool) -> Self {
         let &ast::Program(ref ns) = a;
-        Program(ns.iter().map(|n| Node::from_ast_node(n)).collect())
+        let mut p = Program(ns.iter().map(|n| Node::from_ast_node(n)).collect());
+        if opt {
+            p.opt_multiply();
+        }
+        p
+    }
+
+    pub fn opt_multiply(&mut self) {
+        let Program(ref mut ns) = *self;
+        *ns = ns.iter().map(|n| n.convert_multiply_loop()).collect();
     }
 
     pub fn execute<R: Reader, W: Writer>(&self, input: &mut R, output: &mut W) {
