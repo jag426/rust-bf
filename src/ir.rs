@@ -29,6 +29,52 @@ impl Node {
                 ns.iter().map(|n| Node::from_ast_node(n)).collect()),
         }
     }
+
+    pub fn is_multiply_loop(&self) -> bool {
+        use self::Node::{AddConst, Loop, Move};
+
+        fn is_simple_loop(ns: &Vec<Node>) -> bool {
+            ns.iter().fold(true, |acc, n| acc && match n {
+                &Move(_) | &AddConst(_, _) => true,
+                _ => false,
+            })
+        }
+
+        fn net_move(ns: &Vec<Node>) -> isize {
+            ns.iter().fold(0is, |acc, n| acc + match n {
+                &Move(m) => m,
+                _ => 0is,
+            })
+        }
+
+        fn net_zero_inc(ns: &Vec<Node>) -> i32 {
+            let mut offset = 0is;
+            let mut zero_inc = 0i32;
+            for n in ns.iter() {
+                match n {
+                    &Move(m) => {
+                        offset += m;
+                    }
+                    &AddConst(o, a) => {
+                        if offset + o == 0is {
+                            zero_inc += a;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            zero_inc
+        }
+
+        match self {
+            &Loop(ref ns) => {
+                is_simple_loop(ns) &&
+                net_move(ns) == 0is &&
+                net_zero_inc(ns) as u8 == -1 as u8
+            }
+            _ => false
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -96,6 +142,29 @@ impl Program {
         }
 
         ns.iter().fold((), |_, ref n| step(&n, &mut tape, &mut pos, input, output));
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::Node::{AddConst, AddMult, Input, Loop, Move, Output, Zero};
+
+    #[test]
+    fn test_is_multiply_loop() {
+        assert!(!Loop(vec![]).is_multiply_loop());
+        assert!(Loop(vec![AddConst(0, -1)]).is_multiply_loop());
+        assert!(Loop(vec![Move(1), AddConst(-1, -1), Move(-1)]).is_multiply_loop());
+        assert!(!Loop(vec![Move(1), AddConst(0, -1), Move(-1)]).is_multiply_loop());
+        assert!(!Loop(vec![Move(1), AddConst(-1, -1)]).is_multiply_loop());
+        assert!(!Loop(vec![AddMult(0, 0, 0), AddConst(0, -1)]).is_multiply_loop());
+        assert!(!Loop(vec![Input(0), AddConst(0, -1)]).is_multiply_loop());
+        assert!(!Loop(vec![Output(0), AddConst(0, -1)]).is_multiply_loop());
+        assert!(!Loop(vec![Zero(0), AddConst(0, -1)]).is_multiply_loop());
+        assert!(!Loop(vec![Loop(vec![]), AddConst(0, -1)]).is_multiply_loop());
+        assert!(!Loop(vec![Move(1), AddConst(0, 1), Move(1), AddConst(0, 2), Move(-2)]).is_multiply_loop());
+        assert!(Loop(vec![Move(1), AddConst(0, 1), AddConst(-1, -1), Move(1), AddConst(0, 2), Move(-2)]).is_multiply_loop());
+        assert!(!Loop(vec![AddConst(0, -1), Move(1), AddConst(0, 1), AddConst(-1, 1), Move(-1)]).is_multiply_loop());
+        assert!(!Loop(vec![AddConst(0, -2)]).is_multiply_loop());
     }
 }
 
