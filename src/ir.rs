@@ -20,18 +20,19 @@ pub enum Node {
 
 impl Node {
     pub fn from_ast_node(c: &ast::Node) -> Self {
+        use self::Node::*;
         match c {
-            &ast::Node::Move(o)      => Node::Move(o),
-            &ast::Node::Add(a)       => Node::AddConst(0is, a),
-            &ast::Node::Output       => Node::Output(0is),
-            &ast::Node::Input        => Node::Input(0is),
-            &ast::Node::Loop(ref ns) => Node::Loop(
+            &ast::Node::Move(o)      => Move(o),
+            &ast::Node::Add(a)       => AddConst(0is, a),
+            &ast::Node::Output       => Output(0is),
+            &ast::Node::Input        => Input(0is),
+            &ast::Node::Loop(ref ns) => Loop(
                 ns.iter().map(|n| Node::from_ast_node(n)).collect()),
         }
     }
 
     pub fn is_multiply_loop(&self) -> bool {
-        use self::Node::{AddConst, Loop, Move};
+        use self::Node::*;
 
         fn is_simple_loop(ns: &Vec<Node>) -> bool {
             ns.iter().fold(true, |acc, n| acc && match n {
@@ -77,7 +78,7 @@ impl Node {
     }
 
     pub fn convert_multiply_loop(&self) -> Node {
-        use self::Node::{Loop, Move, AddConst, AddMult, Zero};
+        use self::Node::*;
         match self {
             &Loop(ref ns) if self.is_multiply_loop() => {
                 let mut ret = Vec::new();
@@ -113,22 +114,63 @@ pub struct Program(pub Vec<Node>);
 
 impl Program {
     pub fn from_ast(a: &ast::Program, opt: bool) -> Self {
-        let &ast::Program(ref ns) = a;
-        let mut p = Program(ns.iter().map(|n| Node::from_ast_node(n)).collect());
+        let mut p = Program(a.0.iter().map(|n| Node::from_ast_node(n)).collect());
         if opt {
             p.opt_multiply();
+            p.opt_moves();
         }
         p
     }
 
     pub fn opt_multiply(&mut self) {
-        let Program(ref mut ns) = *self;
-        *ns = ns.iter().map(|n| n.convert_multiply_loop()).collect();
+        self.0 = self.0.iter().map(|n| n.convert_multiply_loop()).collect();
+    }
+
+    pub fn opt_moves(&mut self) {
+        use self::Node::*;
+        fn helper(ns: &Vec<Node>) -> Vec<Node> {
+            let mut ret = Vec::new();
+            let mut offset = 0is;
+            for n in ns.iter() {
+                match n {
+                    &Loop(ref ns) => {
+                        if offset != 0is {
+                            ret.push(Move(offset));
+                        }
+                        ret.push(Loop(helper(ns)));
+                        offset = 0is;
+                    }
+                    &Move(o) => {
+                        offset += o;
+                    }
+                    &AddConst(o, a) => {
+                        ret.push(AddConst(o + offset, a));
+                    }
+                    &AddMult(o, m, a) => {
+                        ret.push(AddMult(o + offset, m + offset, a));
+                    }
+                    &Zero(o) => {
+                        ret.push(Zero(o + offset));
+                    }
+                    &Output(o) => {
+                        ret.push(Output(o + offset));
+                    }
+                    &Input(o) => {
+                        ret.push(Input(o + offset));
+                    }
+                }
+            }
+            if offset != 0is {
+                ret.push(Move(offset));
+            }
+            ret
+        }
+
+        *self = Program(helper(&self.0));
     }
 
     pub fn execute<R: Reader, W: Writer>(&self, input: &mut R, output: &mut W) {
-        use self::Node::{Loop, Move, AddConst, AddMult, Zero, Output, Input};
-        let &Program(ref ns) = self;
+        use self::Node::*;
         let mut tape = vec![0u8];
         let mut pos = 0us;
 
@@ -181,7 +223,7 @@ impl Program {
             }
         }
 
-        ns.iter().fold((), |_, ref n| step(&n, &mut tape, &mut pos, input, output));
+        self.0.iter().fold((), |_, ref n| step(&n, &mut tape, &mut pos, input, output));
     }
 }
 
